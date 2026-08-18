@@ -9,6 +9,8 @@ import {
 } from "@/lib/services/provider-service";
 import {
   getLockedBaseUrl,
+  getLockedImageBaseUrl,
+  isImageBaseUrlLocked,
   isBaseUrlLocked,
   withProviderCredentials,
 } from "@/lib/services/provider-runtime";
@@ -23,6 +25,8 @@ function providerRuntimeConfig() {
   return {
     baseUrlLocked: isBaseUrlLocked(),
     lockedBaseUrl: getLockedBaseUrl() || null,
+    imageBaseUrlLocked: isImageBaseUrlLocked(),
+    lockedImageBaseUrl: getLockedImageBaseUrl() || null,
   };
 }
 
@@ -44,6 +48,8 @@ export async function POST(request: NextRequest) {
         ...parsed,
         baseUrl: resolved.baseUrl,
         apiKey: resolved.apiKey,
+        imageBaseUrl: resolved.imageBaseUrl,
+        imageApiKey: resolved.imageApiKey,
       });
       const providers = await getAllProviderConfigs();
       return ok({

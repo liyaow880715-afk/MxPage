@@ -136,6 +136,8 @@ export interface ProviderConnectionInput {
   name: string;
   baseUrl: string;
   apiKey: string;
+  imageBaseUrl?: string;
+  imageApiKey?: string;
 }
 
 export interface ModelEndpointSupport {

@@ -86,6 +86,7 @@ model ProviderConfig {
   id              String         @id @default(cuid())
   name            String
   baseUrl         String
+  imageBaseUrl    String?
   apiKeyEncrypted String
   isActive        Boolean        @default(false)
   createdAt       DateTime       @default(now())

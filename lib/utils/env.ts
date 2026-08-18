@@ -8,6 +8,7 @@ const envSchema = z.object({
   APP_USER_DATA_DIR: z.string().optional(),
   NEXT_PUBLIC_APP_NAME: z.string().default("MxPage"),
   LOCK_BASE_URL: z.string().trim().url().optional(),
+  LOCK_IMAGE_BASE_URL: z.string().trim().url().optional(),
   FORCED_API_BASE: z.string().trim().url().optional(),
   FORCED_API_BASE_URL: z.string().trim().url().optional(),
 });
@@ -20,6 +21,7 @@ export const env = envSchema.parse({
   APP_USER_DATA_DIR: process.env.APP_USER_DATA_DIR,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
   LOCK_BASE_URL: process.env.LOCK_BASE_URL,
+  LOCK_IMAGE_BASE_URL: process.env.LOCK_IMAGE_BASE_URL,
   FORCED_API_BASE: process.env.FORCED_API_BASE,
   FORCED_API_BASE_URL: process.env.FORCED_API_BASE_URL,
 });

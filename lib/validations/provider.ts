@@ -4,6 +4,11 @@ export const providerInputSchema = z.object({
   name: z.string().trim().min(2, "请输入 Provider 名称"),
   baseUrl: z.string().trim().url("请输入有效的 baseURL"),
   apiKey: z.string().trim().optional().default(""),
+  imageBaseUrl: z
+    .union([z.string().trim().url("请输入有效的图像接口 baseURL"), z.literal("")])
+    .optional()
+    .default(""),
+  imageApiKey: z.string().trim().optional().default(""),
 });
 
 const modelSnapshotSchema = z

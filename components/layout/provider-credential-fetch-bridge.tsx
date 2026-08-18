@@ -7,6 +7,8 @@ export const CLIENT_PROVIDER_STORAGE_KEY = "mxpage:provider-credentials:v1";
 type StoredProviderCredentials = {
   apiKey?: string;
   baseUrl?: string;
+  imageApiKey?: string;
+  imageBaseUrl?: string;
 };
 
 function readCredentials(): StoredProviderCredentials {
@@ -17,6 +19,8 @@ function readCredentials(): StoredProviderCredentials {
     return {
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey.trim() : "",
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl.trim() : "",
+      imageApiKey: typeof parsed.imageApiKey === "string" ? parsed.imageApiKey.trim() : "",
+      imageBaseUrl: typeof parsed.imageBaseUrl === "string" ? parsed.imageBaseUrl.trim() : "",
     };
   } catch {
     return {};
@@ -48,9 +52,17 @@ export function ProviderCredentialFetchBridge() {
 
       if (credentials.apiKey) {
         headers.set("x-mxpage-api-key", credentials.apiKey);
+        headers.set("x-mxpage-text-api-key", credentials.apiKey);
       }
       if (credentials.baseUrl) {
         headers.set("x-mxpage-base-url", credentials.baseUrl);
+        headers.set("x-mxpage-text-base-url", credentials.baseUrl);
+      }
+      if (credentials.imageApiKey || credentials.apiKey) {
+        headers.set("x-mxpage-image-api-key", credentials.imageApiKey || credentials.apiKey || "");
+      }
+      if (credentials.imageBaseUrl || credentials.baseUrl) {
+        headers.set("x-mxpage-image-base-url", credentials.imageBaseUrl || credentials.baseUrl || "");
       }
 
       return originalFetch(input, { ...init, headers });

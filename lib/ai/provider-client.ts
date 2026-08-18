@@ -73,3 +73,34 @@ export interface ProviderAdapter {
   generateImage(input: ImageGenerationRequest): Promise<ImageGenerationResult>;
   editImage(input: ImageEditRequest): Promise<ImageGenerationResult>;
 }
+
+export class RoutedProviderAdapter implements ProviderAdapter {
+  constructor(
+    private readonly textAdapter: ProviderAdapter,
+    private readonly imageAdapter: ProviderAdapter,
+  ) {}
+
+  testConnection() {
+    return this.textAdapter.testConnection();
+  }
+
+  listModels() {
+    return this.textAdapter.listModels();
+  }
+
+  generateText(input: TextRequest) {
+    return this.textAdapter.generateText(input);
+  }
+
+  generateStructured<T>(input: StructuredRequest<T>) {
+    return this.textAdapter.generateStructured(input);
+  }
+
+  generateImage(input: ImageGenerationRequest) {
+    return this.imageAdapter.generateImage(input);
+  }
+
+  editImage(input: ImageEditRequest) {
+    return this.imageAdapter.editImage(input);
+  }
+}

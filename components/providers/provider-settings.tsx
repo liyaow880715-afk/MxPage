@@ -36,6 +36,7 @@ type ProviderRecord = {
   id: string;
   name: string;
   baseUrl: string;
+  imageBaseUrl?: string;
   apiKey?: string;
   maskedApiKey?: string;
   isActive: boolean;
@@ -44,8 +45,10 @@ type ProviderRecord = {
 };
 
 type RuntimeConfig = {
-  baseUrlLocked: boolean;
-  lockedBaseUrl: string | null;
+  baseUrlLocked?: boolean;
+  lockedBaseUrl?: string | null;
+  imageBaseUrlLocked?: boolean;
+  lockedImageBaseUrl?: string | null;
 };
 
 interface ProviderSettingsProps {
@@ -229,29 +232,45 @@ function formatTimeLabel(value: string | Date) {
 }
 
 function readStoredCredentials() {
-  if (typeof window === "undefined") return { apiKey: "", baseUrl: "" };
+  if (typeof window === "undefined") return { apiKey: "", baseUrl: "", imageApiKey: "", imageBaseUrl: "" };
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(CLIENT_PROVIDER_STORAGE_KEY) || "{}") as { apiKey?: string; baseUrl?: string };
+    const parsed = JSON.parse(window.localStorage.getItem(CLIENT_PROVIDER_STORAGE_KEY) || "{}") as {
+      apiKey?: string;
+      baseUrl?: string;
+      imageApiKey?: string;
+      imageBaseUrl?: string;
+    };
+    const apiKey = parsed.apiKey ?? "";
+    const baseUrl = parsed.baseUrl ?? "";
     return {
-      apiKey: parsed.apiKey ?? "",
-      baseUrl: parsed.baseUrl ?? "",
+      apiKey,
+      baseUrl,
+      imageApiKey: parsed.imageApiKey ?? apiKey,
+      imageBaseUrl: parsed.imageBaseUrl ?? baseUrl,
     };
   } catch {
-    return { apiKey: "", baseUrl: "" };
+    return { apiKey: "", baseUrl: "", imageApiKey: "", imageBaseUrl: "" };
   }
 }
 
-function writeStoredCredentials(values: { apiKey: string; baseUrl: string }) {
+function writeStoredCredentials(values: { apiKey: string; baseUrl: string; imageApiKey: string; imageBaseUrl: string }) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     CLIENT_PROVIDER_STORAGE_KEY,
-    JSON.stringify({ apiKey: values.apiKey.trim(), baseUrl: values.baseUrl.trim() }),
+    JSON.stringify({
+      apiKey: values.apiKey.trim(),
+      baseUrl: values.baseUrl.trim(),
+      imageApiKey: values.imageApiKey.trim(),
+      imageBaseUrl: values.imageBaseUrl.trim(),
+    }),
   );
 }
 
 export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSettingsProps) {
   const lockedBaseUrl = runtimeConfig?.lockedBaseUrl ?? "";
+  const lockedImageBaseUrl = runtimeConfig?.lockedImageBaseUrl || lockedBaseUrl;
   const baseUrlLocked = Boolean(runtimeConfig?.baseUrlLocked && lockedBaseUrl);
+  const imageBaseUrlLocked = Boolean((runtimeConfig?.imageBaseUrlLocked || baseUrlLocked) && lockedImageBaseUrl);
   const [providers, setProviders] = useState(initialProviders);
   const activeProvider = useMemo(() => providers.find((item) => item.isActive) ?? providers[0] ?? null, [providers]);
   const [selectedProviderId, setSelectedProviderId] = useState(activeProvider?.id ?? "");
@@ -259,14 +278,16 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     () => providers.find((item) => item.id === selectedProviderId) ?? activeProvider,
     [providers, selectedProviderId, activeProvider],
   );
-  const [loading, setLoading] = useState<null | "configure" | "saveAsNew" | "activate">(null);
+  const [loading, setLoading] = useState<null | "discover" | "save" | "saveAsNew" | "activate">(null);
   const [models, setModels] = useState<Array<GenericModelRecord>>(selectedProvider?.models ?? []);
   const [defaults, setDefaults] = useState<DefaultAssignments>(buildDefaults(selectedProvider ?? null));
   const [form, setForm] = useState({
     id: selectedProvider?.id ?? "",
     name: selectedProvider?.name ?? "默认 GPT 模型服务",
     baseUrl: lockedBaseUrl || selectedProvider?.baseUrl || "https://api.openai-proxy.org/v1",
+    imageBaseUrl: lockedImageBaseUrl || selectedProvider?.imageBaseUrl || selectedProvider?.baseUrl || "https://api.openai-proxy.org/v1",
     apiKey: "",
+    imageApiKey: "",
   });
 
   useEffect(() => {
@@ -275,8 +296,10 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
       ...current,
       baseUrl: lockedBaseUrl || stored.baseUrl || current.baseUrl,
       apiKey: stored.apiKey || current.apiKey,
+      imageBaseUrl: lockedImageBaseUrl || stored.imageBaseUrl || current.imageBaseUrl,
+      imageApiKey: stored.imageApiKey || current.imageApiKey,
     }));
-  }, [lockedBaseUrl]);
+  }, [lockedBaseUrl, lockedImageBaseUrl]);
 
   useEffect(() => {
     const stored = readStoredCredentials();
@@ -287,9 +310,11 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
       id: nextProvider?.id ?? "",
       name: nextProvider?.name ?? "默认 GPT 模型服务",
       baseUrl: lockedBaseUrl || nextProvider?.baseUrl || stored.baseUrl || "https://api.openai-proxy.org/v1",
+      imageBaseUrl: lockedImageBaseUrl || nextProvider?.imageBaseUrl || nextProvider?.baseUrl || stored.imageBaseUrl || stored.baseUrl || "https://api.openai-proxy.org/v1",
       apiKey: stored.apiKey,
+      imageApiKey: stored.imageApiKey,
     });
-  }, [selectedProvider, lockedBaseUrl]);
+  }, [selectedProvider, lockedBaseUrl, lockedImageBaseUrl]);
 
   type ProviderSubmitValues = ReturnType<typeof currentSubmitValues>;
 
@@ -309,18 +334,29 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
   }
 
   function currentSubmitValues() {
+    const textBaseUrl = baseUrlLocked ? lockedBaseUrl : form.baseUrl.trim();
+    const imageBaseUrl = imageBaseUrlLocked ? lockedImageBaseUrl : form.imageBaseUrl.trim() || textBaseUrl;
+    const textApiKey = form.apiKey.trim();
+    const imageApiKey = form.imageApiKey.trim() || textApiKey;
     return {
       id: form.id || undefined,
       name: form.name.trim() || "默认 GPT 模型服务",
-      baseUrl: baseUrlLocked ? lockedBaseUrl : form.baseUrl.trim(),
-      apiKey: form.apiKey.trim(),
+      baseUrl: textBaseUrl,
+      apiKey: textApiKey,
+      imageBaseUrl,
+      imageApiKey,
       isActive: true,
     };
   }
 
   function persistCurrentCredentials() {
     const values = currentSubmitValues();
-    writeStoredCredentials({ apiKey: values.apiKey, baseUrl: values.baseUrl });
+    writeStoredCredentials({
+      apiKey: values.apiKey,
+      baseUrl: values.baseUrl,
+      imageApiKey: values.imageApiKey,
+      imageBaseUrl: values.imageBaseUrl,
+    });
     return values;
   }
 
@@ -348,16 +384,6 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     } finally {
       setLoading(null);
     }
-  }
-
-  async function testProviderConnection(values: ProviderSubmitValues) {
-    const response = await fetch("/api/providers/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    const payload = await response.json();
-    if (!payload.success) throw new Error(payload.error?.message ?? "连接测试失败");
   }
 
   async function discoverProviderModels(values: ProviderSubmitValues) {
@@ -392,18 +418,29 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     hydrateFromProviderPayload(payload.data, savedProviderId);
   }
 
-  async function handleOneClickConfigure() {
-    setLoading("configure");
+  async function handleDiscoverModels() {
+    setLoading("discover");
     try {
-      const values = persistCurrentCredentials();
-      await testProviderConnection(values);
+      const values = currentSubmitValues();
       const { discoveredModels, recommendedDefaults } = await discoverProviderModels(values);
       setModels(discoveredModels);
       setDefaults(recommendedDefaults);
-      await persistProviderConfig(values, true, discoveredModels, recommendedDefaults);
-      toast.success(`一键配置完成：已连接服务、识别 ${discoveredModels.length} 个模型并保存配置`);
+      toast.success(`已探测到 ${discoveredModels.length} 个可用模型，尚未保存配置`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "一键配置失败");
+      toast.error(error instanceof Error ? error.message : "模型探测失败");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function saveCurrentProvider() {
+    setLoading("save");
+    try {
+      const values = persistCurrentCredentials();
+      await persistProviderConfig(values, true);
+      toast.success("配置已保存，API Key 仅保存在当前浏览器");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "配置保存失败");
     } finally {
       setLoading(null);
     }
@@ -460,11 +497,11 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
                     onChange={(event) => setSelectedProviderId(event.target.value)}
                   >
                     {providers.length === 0 ? <option value="">暂无已保存服务</option> : null}
-                    {providers.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
+                {providers.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
                         {provider.name} / {provider.baseUrl}
-                      </option>
-                    ))}
+                  </option>
+                ))}
                   </select>
                   <ChevronsUpDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
@@ -482,7 +519,8 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
                   <p className="font-medium">{selectedProvider.name}</p>
                   {selectedProvider.isActive ? <Badge variant="success">当前服务</Badge> : null}
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">{selectedProvider.baseUrl}</p>
+                <p className="mt-2 text-sm text-muted-foreground">文本 / 视觉：{selectedProvider.baseUrl}</p>
+                <p className="mt-1 text-sm text-muted-foreground">图像生成 / 编辑：{selectedProvider.imageBaseUrl || selectedProvider.baseUrl}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Key：仅保存在当前浏览器</p>
                 <p className="mt-1 text-xs text-muted-foreground">最近更新：{formatTimeLabel(selectedProvider.updatedAt)}</p>
               </div>
@@ -496,38 +534,66 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
               <Label htmlFor="provider-name">服务名称</Label>
               <Input id="provider-name" autoComplete="off" value={form.name} onChange={(event) => updateForm({ name: event.target.value })} placeholder="默认 GPT 模型服务" />
             </div>
-            {!baseUrlLocked ? (
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="provider-base-url">baseURL</Label>
-                <Input id="provider-base-url" inputMode="url" autoComplete="off" autoCapitalize="none" value={form.baseUrl} onChange={(event) => updateForm({ baseUrl: event.target.value })} placeholder="https://your-provider.example/v1" />
+            <div className="space-y-3 rounded-2xl border border-border bg-muted/25 p-4 md:col-span-2">
+              <div>
+                <p className="text-sm font-medium">文字 + 图像识别接口</p>
+                <p className="mt-1 text-xs text-muted-foreground">用于文本生成、结构化输出和商品图像识别。</p>
               </div>
-            ) : null}
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="provider-api-key">API Key</Label>
-              <Input id="provider-api-key" type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => updateForm({ apiKey: event.target.value })} placeholder="请输入当前浏览器使用的 API Key" />
-              <p className="text-xs text-muted-foreground">API Key 会写入浏览器 localStorage，不会保存到服务器数据库。不同设备需要分别配置。</p>
+              {!baseUrlLocked ? (
+                <div className="space-y-2">
+                  <Label htmlFor="provider-base-url">baseURL</Label>
+                  <Input id="provider-base-url" inputMode="url" autoComplete="off" autoCapitalize="none" value={form.baseUrl} onChange={(event) => updateForm({ baseUrl: event.target.value })} placeholder="https://your-text-provider.example/v1" />
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="provider-api-key">API Key</Label>
+                <Input id="provider-api-key" type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => updateForm({ apiKey: event.target.value })} placeholder="请输入文字 / 视觉接口 API Key" />
+              </div>
             </div>
+            <div className="space-y-3 rounded-2xl border border-border bg-muted/25 p-4 md:col-span-2">
+              <div>
+                <p className="text-sm font-medium">图片生成 + 编辑接口</p>
+                <p className="mt-1 text-xs text-muted-foreground">留空时沿用上面的接口和 API Key。</p>
+              </div>
+              {!imageBaseUrlLocked ? (
+                <div className="space-y-2">
+                  <Label htmlFor="provider-image-base-url">baseURL</Label>
+                  <Input id="provider-image-base-url" inputMode="url" autoComplete="off" autoCapitalize="none" value={form.imageBaseUrl} onChange={(event) => updateForm({ imageBaseUrl: event.target.value })} placeholder="https://your-image-provider.example/v1" />
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="provider-image-api-key">API Key</Label>
+                <Input id="provider-image-api-key" type="password" autoComplete="new-password" value={form.imageApiKey} onChange={(event) => updateForm({ imageApiKey: event.target.value })} placeholder="可选，留空沿用文字 / 视觉接口 Key" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground md:col-span-2">API Key 只会在点击“保存配置”后写入当前浏览器 localStorage，不会保存到服务器数据库。</p>
           </form>
 
           <div className="space-y-3 rounded-3xl border border-border bg-muted/35 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
-                <p className="text-sm font-medium">一键配置模型服务</p>
+                <p className="text-sm font-medium">模型探测与保存</p>
                 <p className="text-xs leading-6 text-muted-foreground">
-                  系统会自动完成本地保存凭证、测试连接、发现模型、识别能力并保存当前服务配置。
+                  只读取两个接口实际返回的可用模型，不会自动保存。确认模型和默认分配后，再手动保存配置。
                 </p>
               </div>
-              <Button type="button" onClick={handleOneClickConfigure} disabled={loading !== null || !form.apiKey.trim()} className="h-11 shrink-0 gap-2 px-5">
-                {loading === "configure" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />}
-                {loading === "configure" ? "正在一键配置..." : selectedProvider ? "一键测试、探测并保存" : "一键配置"}
+              <Button type="button" onClick={handleDiscoverModels} disabled={loading !== null || !form.apiKey.trim()} className="h-11 shrink-0 gap-2 px-5">
+                {loading === "discover" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />}
+                {loading === "discover" ? "正在探测模型..." : "探测可用模型"}
               </Button>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-3">
-              <p className="text-xs text-muted-foreground">需要保留当前历史服务时，可先一键配置确认模型，再另存为新服务。</p>
-              <Button type="button" variant="outline" onClick={saveProviderAsNew} disabled={loading !== null || models.length === 0 || !form.apiKey.trim()}>
+              <p className="text-xs text-muted-foreground">保存动作由你手动触发；另存为新服务不会覆盖历史配置。</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={saveCurrentProvider} disabled={loading !== null || !form.apiKey.trim()}>
+                  {loading === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  保存配置
+                </Button>
+                <Button type="button" variant="outline" onClick={saveProviderAsNew} disabled={loading !== null || !form.apiKey.trim()}>
                 {loading === "saveAsNew" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CopyPlus className="mr-2 h-4 w-4" />}
                 另存为新服务
-              </Button>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -566,7 +632,7 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
       <Card>
         <CardHeader>
           <CardTitle>模型能力分组</CardTitle>
-          <CardDescription>按功能类型聚合模型。默认排序优先 GPT 文本模型和 GPT Image 系列。</CardDescription>
+          <CardDescription>只展示最近一次从配置接口实际探测到的模型。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {models.length === 0 ? (

@@ -11,6 +11,7 @@ type ProviderPageData = Array<{
   id: string;
   name: string;
   baseUrl: string;
+  imageBaseUrl?: string;
   apiKey?: string;
   maskedApiKey?: string;
   isActive: boolean;
@@ -38,8 +39,10 @@ type ProviderPageData = Array<{
 }>;
 
 type RuntimeConfig = {
-  baseUrlLocked: boolean;
-  lockedBaseUrl: string | null;
+  baseUrlLocked?: boolean;
+  lockedBaseUrl?: string | null;
+  imageBaseUrlLocked?: boolean;
+  lockedImageBaseUrl?: string | null;
 };
 
 function LoadingState() {
@@ -59,6 +62,8 @@ export default function ProviderSettingsPageClient() {
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig>({
     baseUrlLocked: false,
     lockedBaseUrl: null,
+    imageBaseUrlLocked: false,
+    lockedImageBaseUrl: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export default function ProviderSettingsPageClient() {
         if (!aborted) {
           const data = payload.data;
           setProviders(Array.isArray(data) ? data : data?.providers ?? []);
-          setRuntimeConfig(data?.runtime ?? { baseUrlLocked: false, lockedBaseUrl: null });
+          setRuntimeConfig(data?.runtime ?? { baseUrlLocked: false, lockedBaseUrl: null, imageBaseUrlLocked: false, lockedImageBaseUrl: null });
         }
       } catch (err) {
         if (!aborted) {
@@ -122,7 +127,7 @@ export default function ProviderSettingsPageClient() {
       <PageHeader
         eyebrow="模型服务配置"
         title="Provider 与模型配置中心"
-        description="页面展示已保存的 Provider 与模型快照。API Key 仅保存在当前浏览器；私有化部署可通过 LOCK_BASE_URL 锁定统一 API 通道。"
+        description="文字 / 视觉与图像生成 / 编辑接口可分别配置。模型探测只读取接口实际返回结果，配置由你手动保存。"
       />
 
       {loading ? (
