@@ -25,6 +25,7 @@ type ProviderModelRecord = {
     imageEdit: string;
     note?: string | null;
   };
+  endpointSource?: "text" | "image" | "both";
   isDefaultAnalysis: boolean;
   isDefaultPlanning: boolean;
   isDefaultHeroImage: boolean;
@@ -66,6 +67,11 @@ type DefaultAssignments = {
 
 type ModelTypeKey = "text" | "vision" | "image_gen" | "image_edit";
 type GenericModelRecord = ProviderModelRecord | Record<string, any>;
+type ProbeSummary = {
+  textCount: number;
+  imageCount: number;
+  imageError: string | null;
+};
 
 const modelTypeFields: Array<{ key: ModelTypeKey; label: string }> = [
   { key: "text", label: "文本生成模型" },
@@ -281,6 +287,7 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
   const [loading, setLoading] = useState<null | "discover" | "save" | "saveAsNew" | "activate">(null);
   const [models, setModels] = useState<Array<GenericModelRecord>>(selectedProvider?.models ?? []);
   const [defaults, setDefaults] = useState<DefaultAssignments>(buildDefaults(selectedProvider ?? null));
+  const [probeSummary, setProbeSummary] = useState<ProbeSummary | null>(null);
   const [form, setForm] = useState({
     id: selectedProvider?.id ?? "",
     name: selectedProvider?.name ?? "默认 GPT 模型服务",
@@ -397,7 +404,15 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
 
     const discoveredModels = payload.data.models ?? [];
     const recommendedDefaults = payload.data.recommendations ?? buildRecommendedDefaults(discoveredModels);
-    return { discoveredModels, recommendedDefaults };
+    return {
+      discoveredModels,
+      recommendedDefaults,
+      probeSummary: {
+        textCount: Array.isArray(payload.data.textModels) ? payload.data.textModels.length : 0,
+        imageCount: Array.isArray(payload.data.imageModels) ? payload.data.imageModels.length : 0,
+        imageError: typeof payload.data.imageError === "string" ? payload.data.imageError : null,
+      },
+    };
   }
 
   async function persistProviderConfig(values: ProviderSubmitValues, overwriteExisting: boolean, discoveredModels = models, recommendedDefaults = defaults) {
@@ -422,10 +437,11 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     setLoading("discover");
     try {
       const values = currentSubmitValues();
-      const { discoveredModels, recommendedDefaults } = await discoverProviderModels(values);
+      const { discoveredModels, recommendedDefaults, probeSummary: nextProbeSummary } = await discoverProviderModels(values);
       setModels(discoveredModels);
       setDefaults(recommendedDefaults);
-      toast.success(`已探测到 ${discoveredModels.length} 个可用模型，尚未保存配置`);
+      setProbeSummary(nextProbeSummary);
+      toast.success(`文字 / 视觉接口 ${nextProbeSummary.textCount} 个，图像生成 / 编辑接口 ${nextProbeSummary.imageCount} 个，尚未保存配置`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "模型探测失败");
     } finally {
@@ -595,6 +611,13 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
                 </Button>
               </div>
             </div>
+            {probeSummary ? (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
+                <span>文字 / 视觉接口：{probeSummary.textCount} 个模型</span>
+                <span>图像生成 / 编辑接口：{probeSummary.imageCount} 个模型</span>
+                {probeSummary.imageError ? <span className="text-destructive">图像接口探测失败：{probeSummary.imageError}</span> : null}
+              </div>
+            ) : null}
           </div>
 
           {models.length > 0 ? (

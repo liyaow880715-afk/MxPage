@@ -39,6 +39,7 @@ type RuntimeProviderModel = {
     imageEdit: string;
     note: string | null;
   };
+  endpointSource?: "text" | "image" | "both";
 };
 
 type ProviderAdapterContext = {
@@ -72,6 +73,7 @@ type ProviderModelSnapshot = {
     imageEdit: string;
     note?: string | null;
   };
+  endpointSource?: "text" | "image" | "both";
 };
 
 function readEndpointSupport(capabilities: Record<string, unknown> | null | undefined) {
@@ -82,10 +84,16 @@ function readEndpointSupport(capabilities: Record<string, unknown> | null | unde
   };
 }
 
+function readEndpointSource(capabilities: Record<string, unknown> | null | undefined) {
+  const source = capabilities?.__endpointSource;
+  return source === "text" || source === "image" || source === "both" ? source : undefined;
+}
+
 function hydrateProviderModels<T extends { capabilities: any }>(models: T[]) {
   return models.map((model) => ({
     ...model,
     endpointSupport: readEndpointSupport(model.capabilities as Record<string, unknown> | undefined),
+    endpointSource: readEndpointSource(model.capabilities as Record<string, unknown> | undefined),
   }));
 }
 
@@ -198,7 +206,23 @@ export async function discoverProviderModels(input: ProviderConnectionInput) {
   const textAdapter = new OpenAICompatibleAdapter(baseUrl, input.apiKey);
   const imageAdapter = new OpenAICompatibleAdapter(imageBaseUrl, input.imageApiKey || input.apiKey);
   const textModels = await textAdapter.listModels();
-  const imageModels = imageBaseUrl === baseUrl ? textModels : await imageAdapter.listModels();
+  let imageModels: Awaited<ReturnType<typeof imageAdapter.listModels>> = [];
+  let imageError: string | null = null;
+  try {
+    imageModels = await imageAdapter.listModels();
+  } catch (error) {
+    if (imageBaseUrl === baseUrl && (input.imageApiKey || input.apiKey) === input.apiKey) {
+      throw error;
+    }
+    imageError = error instanceof Error ? error.message : "图像生成 / 编辑接口模型探测失败";
+  }
+
+  const sourceByModelId = new Map<string, "text" | "image" | "both">();
+  for (const model of textModels) sourceByModelId.set(model.id.trim().toLowerCase(), "text");
+  for (const model of imageModels) {
+    const key = model.id.trim().toLowerCase();
+    sourceByModelId.set(key, sourceByModelId.get(key) === "text" ? "both" : "image");
+  }
   const seen = new Set<string>();
   const models = [...textModels, ...imageModels].filter((model) => {
     const key = model.id.trim().toLowerCase();
@@ -206,10 +230,31 @@ export async function discoverProviderModels(input: ProviderConnectionInput) {
     seen.add(key);
     return true;
   });
-  const normalized = enrichModelEndpointSupport(normalizeDetectedModels(models));
+  const normalized = enrichModelEndpointSupport(
+    normalizeDetectedModels(models).map((model) => ({
+      ...model,
+      endpointSource: sourceByModelId.get(model.modelId) ?? "text",
+      capabilities: {
+        ...model.capabilities,
+        ...(sourceByModelId.get(model.modelId) === "image" || sourceByModelId.get(model.modelId) === "both"
+          ? { image_gen: true, image_edit: true, high_quality: true }
+          : {}),
+        __endpointSource: sourceByModelId.get(model.modelId) ?? "text",
+      },
+      roles: {
+        ...model.roles,
+        ...(sourceByModelId.get(model.modelId) === "image" || sourceByModelId.get(model.modelId) === "both"
+          ? { hero_image: true, detail_image: true, image_edit: true }
+          : {}),
+      },
+    })),
+  );
   return {
     models: normalized,
     recommendations: recommendDefaultModels(normalized),
+    textModels,
+    imageModels,
+    imageError,
   };
 }
 
