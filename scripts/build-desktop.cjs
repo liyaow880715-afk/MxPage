@@ -70,6 +70,12 @@ async function runNextBuild() {
   });
 }
 
+async function runPrismaGenerate() {
+  await runCommand(process.execPath, [path.join(projectRoot, "scripts", "run-prisma-safe.cjs"), "generate"], {
+    cwd: projectRoot,
+  });
+}
+
 async function prepareStandaloneBundle() {
   const standaloneRoot = path.join(desktopDistDir, "standalone");
   const serverEntry = path.join(standaloneRoot, "server.js");
@@ -111,6 +117,7 @@ async function prepareStandaloneBundle() {
 }
 
 async function prepareDesktopBuild() {
+  await runPrismaGenerate();
   await runNextBuild();
   await prepareStandaloneBundle();
   console.log("Desktop bundle prepared successfully.");

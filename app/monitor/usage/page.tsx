@@ -92,7 +92,9 @@ export default async function ApiUsageMonitorPage({
         select: { id: true, name: true },
       })
     : [];
-  const projectNames = new Map(projects.map((item) => [item.id, item.name]));
+  const projectNames = new Map<string, string>(
+    projects.map((item: { id: string; name: string }) => [item.id, item.name]),
+  );
 
   const filterProjectOptions = summary.topProjects.filter((item) => item.projectId !== "unassigned");
 
