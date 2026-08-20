@@ -6,6 +6,7 @@ import { recommendDefaultModels } from "@/lib/ai/model-matcher";
 import { encryptSecret } from "@/lib/utils/crypto";
 import {
   getRequestProviderCredentials,
+  resolveProviderUserAgent,
   resolveEffectiveBaseUrl,
   resolveEffectiveImageBaseUrl,
 } from "@/lib/services/provider-runtime";
@@ -49,6 +50,8 @@ type ProviderAdapterContext = {
     baseUrl: string;
     imageBaseUrl: string;
     apiKeyEncrypted: string;
+    temperature: number | null;
+    reasoningEffort: string | null;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -165,8 +168,17 @@ async function replaceProviderModels(
 export async function testProviderConnection(input: ProviderConnectionInput) {
   const textBaseUrl = resolveEffectiveBaseUrl(input.baseUrl);
   const imageBaseUrl = resolveEffectiveImageBaseUrl(input.imageBaseUrl || textBaseUrl);
-  const textAdapter = new OpenAICompatibleAdapter(textBaseUrl, input.apiKey);
-  const imageAdapter = new OpenAICompatibleAdapter(imageBaseUrl, input.imageApiKey || input.apiKey);
+  const textAdapter = new OpenAICompatibleAdapter(
+    textBaseUrl,
+    input.apiKey,
+    resolveProviderUserAgent(textBaseUrl, input.apiKey),
+  );
+  const imageApiKey = input.imageApiKey || input.apiKey;
+  const imageAdapter = new OpenAICompatibleAdapter(
+    imageBaseUrl,
+    imageApiKey,
+    resolveProviderUserAgent(imageBaseUrl, imageApiKey),
+  );
   const textResult = await textAdapter.testConnection();
   if (imageBaseUrl !== textBaseUrl || (input.imageApiKey || input.apiKey) !== input.apiKey) {
     await imageAdapter.testConnection();
@@ -182,6 +194,7 @@ export async function resolveProviderConnectionInput(
   const baseUrl = resolveEffectiveBaseUrl(input.baseUrl || runtimeCredentials.baseUrl);
   const imageApiKey = input.imageApiKey?.trim() || runtimeCredentials.imageApiKey?.trim() || apiKey;
   const imageBaseUrl = resolveEffectiveImageBaseUrl(input.imageBaseUrl || runtimeCredentials.imageBaseUrl || baseUrl);
+  const userAgent = resolveProviderUserAgent(baseUrl, apiKey);
 
   if (!apiKey) {
     throw new Error("API Key is not configured in this browser. Configure it in Provider settings first.");
@@ -197,14 +210,26 @@ export async function resolveProviderConnectionInput(
     apiKey,
     imageBaseUrl,
     imageApiKey,
+    userAgent,
+    temperature: input.temperature ?? 0.4,
+    reasoningEffort: input.reasoningEffort ?? null,
   };
 }
 
 export async function discoverProviderModels(input: ProviderConnectionInput) {
   const baseUrl = resolveEffectiveBaseUrl(input.baseUrl);
   const imageBaseUrl = resolveEffectiveImageBaseUrl(input.imageBaseUrl || baseUrl);
-  const textAdapter = new OpenAICompatibleAdapter(baseUrl, input.apiKey);
-  const imageAdapter = new OpenAICompatibleAdapter(imageBaseUrl, input.imageApiKey || input.apiKey);
+  const textAdapter = new OpenAICompatibleAdapter(
+    baseUrl,
+    input.apiKey,
+    resolveProviderUserAgent(baseUrl, input.apiKey),
+  );
+  const imageApiKey = input.imageApiKey || input.apiKey;
+  const imageAdapter = new OpenAICompatibleAdapter(
+    imageBaseUrl,
+    imageApiKey,
+    resolveProviderUserAgent(imageBaseUrl, imageApiKey),
+  );
   const textModels = await textAdapter.listModels();
   let imageModels: Awaited<ReturnType<typeof imageAdapter.listModels>> = [];
   let imageError: string | null = null;
@@ -297,6 +322,8 @@ export async function saveProviderConfig(
           baseUrl,
           imageBaseUrl,
           apiKeyEncrypted: encryptSecret(""),
+          temperature: input.temperature ?? 0.4,
+          reasoningEffort: input.reasoningEffort ?? null,
           isActive: nextIsActive,
         },
       })
@@ -306,6 +333,8 @@ export async function saveProviderConfig(
           baseUrl,
           imageBaseUrl,
           apiKeyEncrypted: encryptSecret(""),
+          temperature: input.temperature ?? 0.4,
+          reasoningEffort: input.reasoningEffort ?? null,
           isActive: nextIsActive,
         },
       });
@@ -336,6 +365,8 @@ export async function getAllProviderConfigs() {
       ...provider,
       baseUrl: effectiveBaseUrl,
       imageBaseUrl: effectiveImageBaseUrl,
+      temperature: provider.temperature,
+      reasoningEffort: provider.reasoningEffort,
       apiKey: "",
       maskedApiKey: "",
       models: hydrateProviderModels(provider.models),
@@ -361,6 +392,8 @@ export async function getActiveProviderConfig() {
     ...provider,
     baseUrl: effectiveBaseUrl,
     imageBaseUrl: effectiveImageBaseUrl,
+    temperature: provider.temperature,
+    reasoningEffort: provider.reasoningEffort,
     apiKey: "",
     maskedApiKey: "",
     models: hydrateProviderModels(provider.models),
@@ -390,10 +423,12 @@ export async function activateProviderConfig(providerId: string) {
 }
 
 export async function getProviderAdapter(providerId?: string): Promise<ProviderAdapterContext> {
+  const requestedProviderId =
+    providerId && providerId !== "text" && providerId !== "image" ? providerId : undefined;
   const provider =
-    (providerId
+    (requestedProviderId
       ? await prisma.providerConfig.findUnique({
-          where: { id: providerId },
+          where: { id: requestedProviderId },
           include: { models: true },
         })
       : await prisma.providerConfig.findFirst({
@@ -413,9 +448,22 @@ export async function getProviderAdapter(providerId?: string): Promise<ProviderA
   const baseUrl = resolveEffectiveBaseUrl(runtimeCredentials.baseUrl ?? provider.baseUrl);
   const imageBaseUrl = resolveEffectiveImageBaseUrl(runtimeCredentials.imageBaseUrl ?? provider.imageBaseUrl ?? baseUrl);
   const imageApiKey = runtimeCredentials.imageApiKey?.trim() || apiKey;
+  const userAgent = resolveProviderUserAgent(baseUrl, apiKey);
   const runtimeModels = hydrateProviderModels(provider.models) as unknown as RuntimeProviderModel[];
-  const textAdapter = new OpenAICompatibleAdapter(baseUrl, apiKey);
-  const imageAdapter = new OpenAICompatibleAdapter(imageBaseUrl, imageApiKey);
+  const textAdapter = new OpenAICompatibleAdapter(
+    baseUrl,
+    apiKey,
+    userAgent,
+    provider.temperature,
+    provider.reasoningEffort === "low" || provider.reasoningEffort === "medium" || provider.reasoningEffort === "high"
+      ? provider.reasoningEffort
+      : null,
+  );
+  const imageAdapter = new OpenAICompatibleAdapter(
+    imageBaseUrl,
+    imageApiKey,
+    resolveProviderUserAgent(imageBaseUrl, imageApiKey),
+  );
 
   return {
     provider: {

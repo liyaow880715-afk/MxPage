@@ -14,6 +14,8 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { contentLanguageLabels, type ContentLanguage } from "@/lib/utils/content-language";
+import { fileToBase64Payload } from "@/lib/utils/base64-upload";
 import { buildDefaultVisualStyleGuide, normalizeVisualStyleGuide, type VisualStyleGuide } from "@/lib/utils/visual-style-guide";
 import { sectionTypeLabels } from "@/types/domain";
 
@@ -162,6 +165,7 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
     stage: "idle",
     detail: "",
   });
+  const [referenceUploadingSectionId, setReferenceUploadingSectionId] = useState<string | null>(null);
 
   const heroSections = useMemo(
     () => sections.filter((section: any) => section.type === "HERO"),
@@ -190,6 +194,53 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
       setPreviewConfig(getPreviewConfig(payload.data));
       setGenerationSettings(getGenerationSettings(payload.data));
       setVisualStyleGuide(getVisualStyleGuide(payload.data));
+    }
+  };
+
+  const getSectionReferenceAssets = (section: any) => {
+    const ids = Array.isArray(section?.editableData?.referenceAssetIds)
+      ? (section.editableData.referenceAssetIds as string[])
+      : [];
+    return (projectState.assets ?? []).filter((asset: any) => ids.includes(asset.id));
+  };
+
+  const uploadSectionReferences = async (section: any, files: File[]) => {
+    const images = files.filter((file) => file.type.startsWith("image/")).slice(0, 6);
+    if (!images.length) {
+      toast.error("请选择图片文件");
+      return;
+    }
+    setReferenceUploadingSectionId(section.id);
+    try {
+      const payloads = await Promise.all(images.map((file) => fileToBase64Payload(file)));
+      const response = await fetch("/api/projects/" + project.id + "/sections/" + section.id + "/upload-reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: payloads }),
+      });
+      const payload = await response.json();
+      if (!payload.success) throw new Error(payload.error?.message ?? "参考图上传失败");
+      await refreshProject();
+      toast.success("参考图已添加");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "参考图上传失败");
+    } finally {
+      setReferenceUploadingSectionId(null);
+    }
+  };
+
+  const removeSectionReference = async (section: any, assetId: string) => {
+    try {
+      const response = await fetch("/api/projects/" + project.id + "/sections/" + section.id + "/remove-reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId }),
+      });
+      const payload = await response.json();
+      if (!payload.success) throw new Error(payload.error?.message ?? "参考图删除失败");
+      await refreshProject();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "参考图删除失败");
     }
   };
 
@@ -444,7 +495,9 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
       const response = await fetch(`/api/projects/${project.id}/sections/${section.id}/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          referenceAssetIds: getSectionReferenceAssets(section).map((asset: any) => asset.id),
+        }),
       });
       const payload = await response.json();
       if (!payload.success) {
@@ -498,7 +551,9 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
+            body: JSON.stringify({
+              referenceAssetIds: getSectionReferenceAssets(section).map((asset: any) => asset.id),
+            }),
           },
         );
 
@@ -558,6 +613,56 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
   };
 
   const bulkPercent = progressPercent(bulkProgress);
+
+  const renderReferenceInput = (section: any) => {
+    const references = getSectionReferenceAssets(section);
+    const inputId = "section-reference-" + section.id;
+    return (
+      <div className="space-y-3 rounded-2xl border border-dashed border-border bg-muted/25 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <Label>参考图输入</Label>
+            <p className="mt-1 text-xs text-muted-foreground">可上传版式、风格、包装或细节参考图，生成时会和商品主图一起传给图像模型。</p>
+          </div>
+          <Input
+            id={inputId}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            disabled={referenceUploadingSectionId === section.id}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.currentTarget.value = "";
+              if (files.length) void uploadSectionReferences(section, files);
+            }}
+          />
+          <label htmlFor={inputId} className="inline-flex h-9 cursor-pointer items-center rounded-xl border border-input bg-background px-3 text-xs font-medium hover:bg-muted">
+            {referenceUploadingSectionId === section.id ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-2 h-3.5 w-3.5" />}
+            添加参考图
+          </label>
+        </div>
+        {references.length ? (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {references.map((asset: any) => (
+              <div key={asset.id} className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-muted">
+                {asset.url ? <img src={asset.url} alt={asset.fileName} className="h-full w-full object-cover" /> : null}
+                <button
+                  type="button"
+                  className="absolute right-1 top-1 hidden rounded-full bg-black/65 p-1 text-white group-hover:block"
+                  onClick={() => void removeSectionReference(section, asset.id)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">尚未添加该模块的参考图。</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -893,6 +998,7 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
                         }
                       />
                     </div>
+                    {renderReferenceInput(section)}
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" onClick={() => moveSectionWithinGroup("hero", section.id, -1)} disabled={index === 0}>
                         <ArrowUp className="mr-1 h-4 w-4" />
@@ -1053,6 +1159,7 @@ export function PlannerWorkspace({ project }: PlannerWorkspaceProps) {
                         }
                       />
                     </div>
+                    {renderReferenceInput(section)}
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" onClick={() => moveSectionWithinGroup("detail", section.id, -1)} disabled={index === 0}>
                         <ArrowUp className="mr-1 h-4 w-4" />

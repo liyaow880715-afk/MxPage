@@ -320,13 +320,13 @@ function mergeReferenceAssets(projectAssets: AssetRecord[], explicitReferenceAss
   return merged.filter((asset, index, list) => list.findIndex((entry) => entry.id === asset.id) === index);
 }
 
-async function resolveReferenceAssets(referenceAssetIds: string[]) {
+async function resolveReferenceAssets(projectId: string, referenceAssetIds: string[]) {
   if (!referenceAssetIds.length) {
     return [];
   }
 
   return prisma.productAsset.findMany({
-    where: { id: { in: referenceAssetIds } },
+    where: { projectId, id: { in: referenceAssetIds } },
   });
 }
 
@@ -643,7 +643,7 @@ async function generateSectionImageInternal(
   const outputSize = getOutputSize(sectionAspectRatio);
   const modelCandidates = buildImageModelCandidates(provider, options);
   const selectedModel = modelCandidates[0] ?? null;
-  const explicitReferenceAssets = await resolveReferenceAssets(options?.referenceAssetIds ?? []);
+  const explicitReferenceAssets = await resolveReferenceAssets(projectId, options?.referenceAssetIds ?? []);
   const effectiveReferenceAssets = mergeReferenceAssets(project.assets as AssetRecord[], explicitReferenceAssets as AssetRecord[]);
   const referenceImages = await Promise.all(effectiveReferenceAssets.map((asset) => assetToDataUrl(asset)));
   const runningTask = await findRecentRunningTask({
@@ -908,7 +908,7 @@ export async function editSectionImage(
     regenerate: true,
   });
   const selectedModel = modelCandidates[0] ?? null;
-  const explicitReferenceAssets = await resolveReferenceAssets(options?.referenceAssetIds ?? []);
+  const explicitReferenceAssets = await resolveReferenceAssets(projectId, options?.referenceAssetIds ?? []);
   const productReferenceAssets = mergeReferenceAssets(project.assets as AssetRecord[], explicitReferenceAssets as AssetRecord[]);
   const baseImage = await assetToDataUrl(section.currentImageAsset as AssetRecord);
   const referenceImages = await Promise.all(

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronsUpDown, CopyPlus, History, Loader2, LockKeyhole, PlugZap } from "lucide-react";
+import { ChevronsUpDown, CopyPlus, History, Loader2, LockKeyhole, PlugZap, Plus, X } from "lucide-react";
 
 import { CLIENT_PROVIDER_STORAGE_KEY } from "@/components/layout/provider-credential-fetch-bridge";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,8 @@ type ProviderRecord = {
   imageBaseUrl?: string;
   apiKey?: string;
   maskedApiKey?: string;
+  temperature?: number | null;
+  reasoningEffort?: "low" | "medium" | "high" | null;
   isActive: boolean;
   updatedAt: string | Date;
   models: ProviderModelRecord[];
@@ -288,6 +290,12 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
   const [models, setModels] = useState<Array<GenericModelRecord>>(selectedProvider?.models ?? []);
   const [defaults, setDefaults] = useState<DefaultAssignments>(buildDefaults(selectedProvider ?? null));
   const [probeSummary, setProbeSummary] = useState<ProbeSummary | null>(null);
+  const [temperature, setTemperature] = useState(selectedProvider?.temperature ?? 0.4);
+  const [reasoningEffort, setReasoningEffort] = useState<"" | "low" | "medium" | "high">(selectedProvider?.reasoningEffort ?? "");
+  const [isAddingManualModel, setIsAddingManualModel] = useState(false);
+  const [manualModelId, setManualModelId] = useState("");
+  const [manualModelLabel, setManualModelLabel] = useState("");
+  const [manualCapabilities, setManualCapabilities] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState({
     id: selectedProvider?.id ?? "",
     name: selectedProvider?.name ?? "默认 GPT 模型服务",
@@ -313,6 +321,12 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     const nextProvider = selectedProvider ?? null;
     setModels(nextProvider?.models ?? []);
     setDefaults(buildDefaults(nextProvider));
+    setTemperature(nextProvider?.temperature ?? 0.4);
+    setReasoningEffort(nextProvider?.reasoningEffort ?? "");
+    setIsAddingManualModel(false);
+    setManualModelId("");
+    setManualModelLabel("");
+    setManualCapabilities({});
     setForm({
       id: nextProvider?.id ?? "",
       name: nextProvider?.name ?? "默认 GPT 模型服务",
@@ -352,6 +366,8 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
       apiKey: textApiKey,
       imageBaseUrl,
       imageApiKey,
+      temperature: Number.isFinite(temperature) ? temperature : 0.4,
+      reasoningEffort: reasoningEffort || null,
       isActive: true,
     };
   }
@@ -479,6 +495,61 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
     toast.success("已按 GPT 优先和模型能力自动填充默认模型");
   }
 
+  function handleAddManualModel() {
+    const modelId = manualModelId.trim();
+    if (!modelId) {
+      toast.error("请输入模型 ID");
+      return;
+    }
+    if (models.some((model) => String(model.modelId ?? "").toLowerCase() === modelId.toLowerCase())) {
+      toast.error("该模型已经在列表中");
+      return;
+    }
+
+    const capabilities = {
+      text: Boolean(manualCapabilities.text),
+      vision: Boolean(manualCapabilities.vision),
+      structured_output: Boolean(manualCapabilities.structured_output),
+      image_gen: Boolean(manualCapabilities.image_gen),
+      image_edit: Boolean(manualCapabilities.image_edit),
+      high_quality: Boolean(manualCapabilities.image_gen || manualCapabilities.image_edit),
+    };
+    const roles = {
+      analysis: capabilities.text || capabilities.vision,
+      planning: capabilities.text,
+      hero_image: capabilities.image_gen,
+      detail_image: capabilities.image_gen,
+      image_edit: capabilities.image_edit,
+    };
+    const manualModel: GenericModelRecord = {
+      modelId,
+      label: manualModelLabel.trim() || modelId,
+      capabilities,
+      roles,
+      quality: null,
+      latency: null,
+      cost: null,
+      isAvailable: true,
+      endpointSource: "both",
+      endpointSupport: {
+        imageGeneration: capabilities.image_gen ? "unknown" : "not_applicable",
+        imageEdit: capabilities.image_edit ? "unknown" : "not_applicable",
+        note: "手动添加的模型，未经过端点探测",
+      },
+      isDefaultAnalysis: false,
+      isDefaultPlanning: false,
+      isDefaultHeroImage: false,
+      isDefaultDetailImage: false,
+      isDefaultImageEdit: false,
+    };
+    setModels((current) => [...current, manualModel]);
+    setManualModelId("");
+    setManualModelLabel("");
+    setManualCapabilities({});
+    setIsAddingManualModel(false);
+    toast.success(`已添加模型：${manualModel.label}`);
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <Card>
@@ -585,6 +656,41 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
             <p className="text-xs text-muted-foreground md:col-span-2">API Key 只会在点击“保存配置”后写入当前浏览器 localStorage，不会保存到服务器数据库。</p>
           </form>
 
+          <div className="grid gap-4 rounded-3xl border border-border bg-muted/25 p-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="provider-temperature">Temperature（文本生成温度）</Label>
+                <span className="text-xs font-medium tabular-nums">{temperature.toFixed(2)}</span>
+              </div>
+              <input
+                id="provider-temperature"
+                type="range"
+                min="0"
+                max="2"
+                step="0.05"
+                value={temperature}
+                onChange={(event) => setTemperature(Number(event.target.value))}
+                className="w-full accent-primary"
+              />
+              <p className="text-xs text-muted-foreground">较低值更稳定，较高值更发散。部分推理模型会自动忽略该参数。</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider-reasoning-effort">Reasoning Effort（推理深度）</Label>
+              <select
+                id="provider-reasoning-effort"
+                className="flex h-10 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground dark:bg-black/30"
+                value={reasoningEffort}
+                onChange={(event) => setReasoningEffort(event.target.value as "" | "low" | "medium" | "high")}
+              >
+                <option value="">自动 / 不发送</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+              <p className="text-xs text-muted-foreground">仅对接口支持的 reasoning / thinking 模型发送。</p>
+            </div>
+          </div>
+
           <div className="space-y-3 rounded-3xl border border-border bg-muted/35 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
@@ -649,6 +755,61 @@ export function ProviderSettings({ initialProviders, runtimeConfig }: ProviderSe
               </div>
             </div>
           ) : null}
+
+          <div className="space-y-3">
+            <Button type="button" variant="outline" onClick={() => setIsAddingManualModel((current) => !current)} disabled={loading !== null}>
+              <Plus className="mr-2 h-4 w-4" />
+              手动添加模型
+            </Button>
+            {isAddingManualModel ? (
+              <div className="space-y-4 rounded-3xl border border-border bg-muted/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-medium">手动添加模型</h3>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setIsAddingManualModel(false)} aria-label="关闭手动添加模型">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-model-id">模型 ID</Label>
+                    <Input id="manual-model-id" placeholder="例如：moonshot-v1-128k 或 dall-e-3" value={manualModelId} onChange={(event) => setManualModelId(event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-model-label">显示名称（可选）</Label>
+                    <Input id="manual-model-label" placeholder={manualModelId || "默认使用模型 ID"} value={manualModelLabel} onChange={(event) => setManualModelLabel(event.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>能力标签</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ["text", "文本"],
+                      ["vision", "视觉理解"],
+                      ["structured_output", "结构化输出"],
+                      ["image_gen", "图像生成"],
+                      ["image_edit", "图像编辑"],
+                    ].map(([key, label]) => {
+                      const enabled = Boolean(manualCapabilities[key]);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setManualCapabilities((current) => ({ ...current, [key]: !current[key] }))}
+                          className={`rounded-full border px-3 py-1 text-xs transition-colors ${enabled ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground hover:border-primary/50"}`}
+                        >
+                          {enabled ? "✓ " : ""}{label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <Button type="button" onClick={handleAddManualModel} className="w-full">
+                  <Plus className="mr-2 h-4 w-4" />
+                  确认添加
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 

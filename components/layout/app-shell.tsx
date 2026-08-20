@@ -1,5 +1,5 @@
 ﻿import Link from "next/link";
-import { BookOpenText, FolderKanban, GalleryVerticalEnd, History, Images, Settings2 } from "lucide-react";
+import { BookOpenText, FolderKanban, GalleryVerticalEnd, History, Images, ScanSearch, Settings2, Wand2 } from "lucide-react";
 
 import { ApiUsageIndicator } from "@/components/layout/api-usage-indicator";
 import { FloatingThemeToggle } from "@/components/layout/theme-toggle";
@@ -11,6 +11,8 @@ const appName = "MxPage";
 const navItems = [
   { href: "/", label: "快速开始", icon: FolderKanban },
   { href: "/batch-create", label: "批量创建", icon: Images },
+  { href: "/product-analyze", label: "商品分析", icon: ScanSearch },
+  { href: "/hero-batch", label: "批量主图", icon: Wand2 },
   { href: "/history", label: "历史记录", icon: History },
   { href: "/xiaohongshu/plan", label: "小红书图文", icon: BookOpenText },
   { href: "/projects/new", label: "高级创建", icon: GalleryVerticalEnd },

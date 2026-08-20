@@ -138,6 +138,9 @@ export interface ProviderConnectionInput {
   apiKey: string;
   imageBaseUrl?: string;
   imageApiKey?: string;
+  userAgent?: string;
+  temperature?: number | null;
+  reasoningEffort?: "low" | "medium" | "high" | null;
 }
 
 export interface ModelEndpointSupport {

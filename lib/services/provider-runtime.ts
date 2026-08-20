@@ -8,12 +8,23 @@ export type RequestProviderCredentials = {
   baseUrl?: string;
   imageApiKey?: string;
   imageBaseUrl?: string;
+  userAgent?: string;
 };
 
 const providerCredentialStorage = new AsyncLocalStorage<RequestProviderCredentials>();
 
 function normalizeBaseUrl(value?: string | null) {
   return value?.trim().replace(/\/+$/, "") || "";
+}
+
+const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1";
+
+export function resolveProviderUserAgent(baseUrl: string | null | undefined, apiKey: string | null | undefined) {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl).toLowerCase();
+  const normalizedApiKey = apiKey?.trim() ?? "";
+  return normalizedBaseUrl === KIMI_CODING_BASE_URL && normalizedApiKey.startsWith("sk-kimi-")
+    ? "KimiCLI/1.3"
+    : "";
 }
 
 export function getLockedBaseUrl() {
@@ -58,6 +69,7 @@ export function readProviderCredentialsFromRequest(request: NextRequest): Reques
       undefined,
     imageApiKey: request.headers.get("x-mxpage-image-api-key")?.trim() || undefined,
     imageBaseUrl: request.headers.get("x-mxpage-image-base-url")?.trim() || undefined,
+    userAgent: request.headers.get("x-mxpage-user-agent")?.trim() || undefined,
   };
 }
 

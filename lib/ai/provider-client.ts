@@ -22,6 +22,7 @@ export interface StructuredRequest<T> {
   userPrompt: string;
   schema: z.ZodType<T>;
   images?: string[];
+  reasoningEffort?: "low" | "medium" | "high";
   timeoutMs?: number;
   monitor?: AiMonitorContext;
   suppressUsageLog?: boolean;
@@ -32,6 +33,7 @@ export interface TextRequest {
   systemPrompt?: string;
   userPrompt: string;
   images?: string[];
+  reasoningEffort?: "low" | "medium" | "high";
   timeoutMs?: number;
   monitor?: AiMonitorContext;
   suppressUsageLog?: boolean;

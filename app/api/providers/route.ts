@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
         apiKey: resolved.apiKey,
         imageBaseUrl: resolved.imageBaseUrl,
         imageApiKey: resolved.imageApiKey,
+        temperature: resolved.temperature,
+        reasoningEffort: resolved.reasoningEffort,
       });
       const providers = await getAllProviderConfigs();
       return ok({

@@ -9,6 +9,7 @@ type StoredProviderCredentials = {
   baseUrl?: string;
   imageApiKey?: string;
   imageBaseUrl?: string;
+  userAgent?: string;
 };
 
 function readCredentials(): StoredProviderCredentials {
@@ -21,6 +22,7 @@ function readCredentials(): StoredProviderCredentials {
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl.trim() : "",
       imageApiKey: typeof parsed.imageApiKey === "string" ? parsed.imageApiKey.trim() : "",
       imageBaseUrl: typeof parsed.imageBaseUrl === "string" ? parsed.imageBaseUrl.trim() : "",
+      userAgent: typeof parsed.userAgent === "string" ? parsed.userAgent.trim() : "",
     };
   } catch {
     return {};
@@ -63,6 +65,9 @@ export function ProviderCredentialFetchBridge() {
       }
       if (credentials.imageBaseUrl || credentials.baseUrl) {
         headers.set("x-mxpage-image-base-url", credentials.imageBaseUrl || credentials.baseUrl || "");
+      }
+      if (credentials.userAgent) {
+        headers.set("x-mxpage-user-agent", credentials.userAgent);
       }
 
       return originalFetch(input, { ...init, headers });

@@ -9,6 +9,9 @@ export const providerInputSchema = z.object({
     .optional()
     .default(""),
   imageApiKey: z.string().trim().optional().default(""),
+  userAgent: z.string().trim().max(512, "User-Agent 不能超过 512 个字符").optional().default(""),
+  temperature: z.number().min(0).max(2).optional().nullable().default(0.4),
+  reasoningEffort: z.enum(["low", "medium", "high"]).optional().nullable().default(null),
 });
 
 const modelSnapshotSchema = z

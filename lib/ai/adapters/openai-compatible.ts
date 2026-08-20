@@ -227,8 +227,21 @@ function shouldOmitTemperatureForModel(model: string) {
   return /^gpt-5/i.test(model);
 }
 
-function withOptionalTemperature<T extends Record<string, unknown>>(model: string, body: T, temperature: number) {
-  return shouldOmitTemperatureForModel(model) ? body : { ...body, temperature };
+function isReasoningModel(model: string) {
+  return /^(?:o[1-9]|gpt-5|deepseek-r1|qwq|reasoner|kimi-k2-thinking)/i.test(model) || /reasoning|thinking/i.test(model);
+}
+
+function withOptionalTemperature<T extends Record<string, unknown>>(
+  model: string,
+  body: T,
+  temperature: number,
+  reasoningEffort?: "low" | "medium" | "high",
+) {
+  const next = shouldOmitTemperatureForModel(model) ? { ...body } : { ...body, temperature };
+  if (reasoningEffort && isReasoningModel(model)) {
+    return { ...next, reasoning_effort: reasoningEffort };
+  }
+  return next;
 }
 
 function buildMessages(input: TextRequest | StructuredRequest<unknown>): ChatMessage[] {
@@ -320,7 +333,13 @@ function classifyProbeResult(status: number, body: string) {
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   private preferredBaseUrl: string | null = null;
 
-  constructor(private readonly baseUrl: string, private readonly apiKey: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly apiKey: string,
+    private readonly userAgent?: string,
+    private readonly defaultTemperature: number | null = null,
+    private readonly defaultReasoningEffort?: "low" | "medium" | "high" | null,
+  ) {}
 
   private buildRequestUrls(path: string) {
     const urls = buildOpenAiCompatibleUrls(this.baseUrl, path);
@@ -367,6 +386,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
             ? {}
             : { "Content-Type": "application/json" }),
           Authorization: `Bearer ${this.apiKey}`,
+          ...(this.userAgent ? { "User-Agent": this.userAgent } : {}),
           ...(extraHeaders ?? {}),
           ...(init?.headers ?? {}),
         },
@@ -964,7 +984,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       withOptionalTemperature(input.model, {
         model: input.model,
         messages: buildMessages(input),
-      }, 0.4),
+      }, this.defaultTemperature ?? 0.4, input.reasoningEffort ?? this.defaultReasoningEffort ?? undefined),
       input.timeoutMs ?? 60000,
       input.monitor,
       { suppressUsageLog: input.suppressUsageLog },
@@ -981,7 +1001,7 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         model: input.model,
         messages: buildMessages(input),
         response_format: { type: "json_object" },
-      }, 0.2),
+      }, this.defaultTemperature ?? 0.2, input.reasoningEffort ?? this.defaultReasoningEffort ?? undefined),
       input.timeoutMs ?? 60000,
       input.monitor,
       { suppressUsageLog: input.suppressUsageLog },

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, UploadCloud } from "lucide-react";
+import { Loader2, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -24,22 +24,20 @@ function buildDraftProjectName() {
 
 export function QuickStartWorkspace() {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  const previewUrls = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [previewUrl]);
+  }, [previewUrls]);
 
   const handleStart = async () => {
-    if (!file) {
-      toast.error("请先上传 1 张主商品图。");
+    if (!files.length) {
+      toast.error("请先上传至少 1 张主商品图。");
       return;
     }
 
@@ -61,20 +59,22 @@ export function QuickStartWorkspace() {
         throw new Error(createdPayload.error?.message ?? "创建项目失败");
       }
 
-      const projectId = createdPayload.data.id as string;
-      const base64Payload = await fileToBase64Payload(file);
 
-      const uploadResponse = await fetch(`/api/projects/${projectId}/assets/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "MAIN",
-          ...base64Payload,
-        }),
-      });
-      const uploadPayload = await uploadResponse.json();
-      if (!uploadPayload.success) {
-        throw new Error(uploadPayload.error?.message ?? "主商品图上传失败");
+      const projectId = createdPayload.data.id as string;
+      for (const [index, file] of files.entries()) {
+        const base64Payload = await fileToBase64Payload(file);
+        const uploadResponse = await fetch(`/api/projects/${projectId}/assets/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: index === 0 ? "MAIN" : "ANGLE",
+            ...base64Payload,
+          }),
+        });
+        const uploadPayload = await uploadResponse.json();
+        if (!uploadPayload.success) {
+          throw new Error(uploadPayload.error?.message ?? (index === 0 ? "主商品图上传失败" : "补充商品图上传失败"));
+        }
       }
 
       const analyzeResponse = await fetch(`/api/projects/${projectId}/analyze`, {
@@ -94,8 +94,8 @@ export function QuickStartWorkspace() {
 
         toast.warning(
           shouldAutoRetry
-            ? "主图已上传，正在为你跳转到分析页继续自动重试。"
-            : "主图已上传，已为你跳转到分析页继续处理。",
+          ? "商品图已上传，正在为你跳转到分析页继续自动重试。"
+          : "商品图已上传，已为你跳转到分析页继续处理。",
         );
 
         router.push(
@@ -104,7 +104,7 @@ export function QuickStartWorkspace() {
         return;
       }
 
-      toast.success("主图上传完成，AI 已自动完成首轮分析。");
+      toast.success("商品图上传完成，AI 已自动完成首轮分析。");
       router.push(`/projects/${projectId}/analysis`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "快速开始失败");
@@ -120,7 +120,7 @@ export function QuickStartWorkspace() {
           上传产品图片
         </h1>
         <p className="mx-auto max-w-2xl text-lg leading-8 text-slate-500 dark:text-slate-400">
-          上传一张产品白底图，AI 将自动分析产品信息
+          上传多张产品图，AI 将综合分析商品信息
         </p>
       </div>
 
@@ -130,7 +130,22 @@ export function QuickStartWorkspace() {
             id="quick-start-file"
             type="file"
             accept="image/*"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            multiple
+            onChange={(event) => {
+              const selectedFiles = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith("image/"));
+              if (!selectedFiles.length) {
+                event.currentTarget.value = "";
+                return;
+              }
+              setFiles((current) => {
+                const nextFiles = [...current, ...selectedFiles];
+                if (nextFiles.length > 6) {
+                  toast.warning("最多上传 6 张商品图，已保留前 6 张。");
+                }
+                return nextFiles.slice(0, 6);
+              });
+              event.currentTarget.value = "";
+            }}
             className="hidden"
           />
 
@@ -138,12 +153,29 @@ export function QuickStartWorkspace() {
             htmlFor="quick-start-file"
             className="flex min-h-[420px] flex-1 cursor-pointer flex-col items-center justify-center rounded-[1.5rem] transition hover:bg-slate-50/80 dark:hover:bg-white/[0.04]"
           >
-            {previewUrl ? (
+            {previewUrls.length ? (
               <div className="flex flex-col items-center justify-center">
-                <div className="w-[min(78vw,340px)] overflow-hidden rounded-[1.5rem] bg-slate-100 shadow-[0_24px_70px_-34px_rgba(0,0,0,0.42)] dark:bg-white/8 md:w-[420px] xl:w-[460px]">
-                  <div className="aspect-square">
-                    <img src={previewUrl} alt={file?.name ?? "主商品图预览"} className="h-full w-full object-contain" />
-                  </div>
+                <div className="grid w-full max-w-2xl grid-cols-2 gap-3 md:grid-cols-3">
+                  {previewUrls.map((url, index) => (
+                    <div key={url} className="group relative overflow-hidden rounded-[1.25rem] bg-slate-100 shadow-sm dark:bg-white/8">
+                      <div className="aspect-square">
+                        <img src={url} alt={files[index]?.name ?? ("商品图 " + (index + 1))} className="h-full w-full object-contain" />
+                      </div>
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 hidden rounded-full bg-black/65 p-1.5 text-white group-hover:block"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setFiles((current) => current.filter((_, item) => item !== index));
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-2 py-1 text-[10px] text-white">
+                        {index === 0 ? "主商品图" : "补充角度图"}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="mt-6 space-y-2 text-center">
@@ -155,8 +187,8 @@ export function QuickStartWorkspace() {
                   ) : (
                     <>
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">已选择产品图</p>
-                      <p className="max-w-md truncate text-sm text-slate-400 dark:text-slate-500">{file?.name}</p>
-                      <p className="text-sm text-slate-400 dark:text-slate-500">点击图片可重新选择</p>
+                      <p className="max-w-md truncate text-sm text-slate-400 dark:text-slate-500">已选择 {files.length} 张图片</p>
+                      <p className="text-sm text-slate-400 dark:text-slate-500">点击图片区域可继续添加，右上角可删除</p>
                     </>
                   )}
                 </div>
@@ -168,14 +200,14 @@ export function QuickStartWorkspace() {
                 </div>
                 <p className="mt-6 text-lg font-medium text-slate-900 dark:text-white">点击上传产品图片</p>
                 <p className="mt-2 text-sm leading-7 text-slate-400 dark:text-slate-500">
-                  支持 JPG、PNG、WEBP，建议使用清晰的白底主图
+                  支持 JPG、PNG、WEBP，最多 6 张；第一张作为主商品图，其余作为补充角度图
                 </p>
               </div>
             )}
           </label>
 
           <div className="mt-6 flex justify-center">
-            <Button onClick={handleStart} disabled={submitting || !file} className="min-w-[220px] rounded-full px-8">
+            <Button onClick={handleStart} disabled={submitting || !files.length} className="min-w-[220px] rounded-full px-8">
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
               {submitting ? "正在上传并自动分析…" : "开始分析"}
             </Button>
