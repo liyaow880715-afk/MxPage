@@ -8,6 +8,9 @@ type DetectedModelInput = {
   modalities?: string[];
 };
 
+const NON_VISION_MODEL_PATTERN =
+  /(?:^|[-_.])(audio|realtime|transcribe|transcription|speech|tts|whisper)(?:$|[-_.])/i;
+
 const emptyCapabilityMap = (): CapabilityMap => ({
   text: false,
   vision: false,
@@ -44,6 +47,19 @@ function modelText(model: string | DetectedModelInput) {
     .toLowerCase();
 }
 
+export function isLikelyVisionModelId(modelId: string) {
+  const id = modelId.toLowerCase();
+  if (NON_VISION_MODEL_PATTERN.test(id)) {
+    return false;
+  }
+
+  // Kimi/Moonshot chat models are multimodal even when their model IDs do not
+  // include an explicit "vision" or "vl" suffix.
+  return /(vision|(?:^|[-_.])vl(?:$|[-_.])|4o|omni|gemini|multimodal|qwen-vl|qvq|pixtral|gpt[-_.]?5(?:[.-]?\d+)?|kimi|moonshot)/.test(
+    id,
+  );
+}
+
 export function detectModelCapabilities(model: string | DetectedModelInput): CapabilityMap {
   const id = (typeof model === "string" ? model : model.id).toLowerCase();
   const text = modelText(model);
@@ -66,7 +82,7 @@ export function detectModelCapabilities(model: string | DetectedModelInput): Cap
     map.structured_output = true;
   }
 
-  if (/(vision|vl|4o|omni|gemini|multimodal|qwen-vl|qvq|pixtral|llava|visual|claude-3|claude-sonnet|claude-opus|gpt-4\.1|gpt-5)/.test(id) || isVisionTyped) {
+  if (isLikelyVisionModelId(id) || isVisionTyped) {
     map.vision = true;
     map.text = true;
     map.structured_output = true;

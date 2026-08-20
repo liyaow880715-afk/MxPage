@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ChevronsUpDown, CopyPlus, History, Loader2, LockKeyhole, PlugZap, Plus, X } from "lucide-react";
 
 import { CLIENT_PROVIDER_STORAGE_KEY } from "@/components/layout/provider-credential-fetch-bridge";
+import { isLikelyVisionModelId } from "@/lib/ai/capability-detector";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,7 +116,7 @@ function isTextGenerationModel(model: GenericModelRecord) {
 }
 
 function isVisionModel(model: GenericModelRecord) {
-  return Boolean(model.capabilities?.vision) || /(vision|vl|4o|omni|multimodal|gpt-4\.1|gpt-5|qwen-vl|qvq|pixtral|visual)/.test(getModelText(model));
+  return Boolean(model.capabilities?.vision) || isLikelyVisionModelId(String(model.modelId ?? "")) || /(vision|vl|4o|omni|multimodal|gpt-4\.1|gpt-5|qwen-vl|qvq|pixtral|visual)/.test(getModelText(model));
 }
 
 function isImageGenerationModel(model: GenericModelRecord) {
@@ -179,12 +180,13 @@ function getModelsForType(models: GenericModelRecord[], typeKey: ModelTypeKey) {
 }
 
 function buildDefaults(provider: ProviderRecord | null): DefaultAssignments {
+  const recommended = buildRecommendedDefaults(provider?.models ?? []);
   return {
-    analysisModelId: provider?.models.find((item) => item.isDefaultAnalysis)?.modelId ?? "",
-    planningModelId: provider?.models.find((item) => item.isDefaultPlanning)?.modelId ?? "",
-    heroImageModelId: provider?.models.find((item) => item.isDefaultHeroImage)?.modelId ?? "",
-    detailImageModelId: provider?.models.find((item) => item.isDefaultDetailImage)?.modelId ?? "",
-    imageEditModelId: provider?.models.find((item) => item.isDefaultImageEdit)?.modelId ?? "",
+    analysisModelId: provider?.models.find((item) => item.isDefaultAnalysis)?.modelId ?? recommended.analysisModelId,
+    planningModelId: provider?.models.find((item) => item.isDefaultPlanning)?.modelId ?? recommended.planningModelId,
+    heroImageModelId: provider?.models.find((item) => item.isDefaultHeroImage)?.modelId ?? recommended.heroImageModelId,
+    detailImageModelId: provider?.models.find((item) => item.isDefaultDetailImage)?.modelId ?? recommended.detailImageModelId,
+    imageEditModelId: provider?.models.find((item) => item.isDefaultImageEdit)?.modelId ?? recommended.imageEditModelId,
   };
 }
 
